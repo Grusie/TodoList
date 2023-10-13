@@ -59,6 +59,7 @@ class TodoListViewModel(application: Application) : AndroidViewModel(application
                 title = title
             )
         }
+        Log.d("confirm updateTodoTitle : ", "$title, ${_todoData.value}")
     }
 
     fun updateTodoDescription(description: String) {
@@ -67,6 +68,7 @@ class TodoListViewModel(application: Application) : AndroidViewModel(application
                 description = description
             )
         }
+        Log.d("confirm updateTodoTitle : ", "$description, ${_todoData.value}")
     }
 
     fun updateTodoIsDone(id: Int) {
