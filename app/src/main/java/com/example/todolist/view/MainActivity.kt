@@ -57,6 +57,7 @@ import com.example.todolist.R
 import com.example.todolist.TodoListViewModel
 import com.example.todolist.model.TodoData
 import com.example.todolist.ui.theme.TodoListTheme
+import com.example.todolist.uiState.EditTodoAction
 
 class MainActivity : ComponentActivity() {
 
@@ -89,43 +90,18 @@ class MainActivity : ComponentActivity() {
                 AppTitleBar(
                     todoData = todoUiState.todoData,
                     deleteDataSet = todoUiState.deleteDataSet,
-                    setTodoData = { id -> viewModel.setTodoData(id) },
-                    onTitleChanged = { title -> viewModel.updateTodoTitle(title) },
-                    onDescriptionChanged = { description ->
-                        viewModel.updateTodoDescription(
-                            description
-                        )
-                    },
-                    isShownToast = todoUiState.isShownToast,
-                    modifyTodoData = { updateFlag, todoData ->
-                        viewModel.modifyTodoData(
-                            updateFlag,
-                            todoData
-                        )
-                    },
-                    deleteTodoItem = { id -> viewModel.deleteTodoData(id) })
+                    handleAction = {viewModel.dispatch(it)},
+                    isShownToast = todoUiState.isShownToast
+                )
             }
         ) { paddingValues ->
             TodoList(
                 modifier = Modifier.padding(paddingValues),
                 todoList = todoUiState.todoList,
                 selectedTodoItem = todoUiState.todoData,
-                onTitleChanged = { title -> viewModel.updateTodoTitle(title) },
-                onDescriptionChanged = { description ->
-                    viewModel.updateTodoDescription(
-                        description
-                    )
-                },
-                isShownToast = todoUiState.isShownToast,
-                modifyTodoData = { updateFlag, todoData ->
-                    viewModel.modifyTodoData(
-                        updateFlag,
-                        todoData
-                    )
-                },
-                setTodoData = { id -> viewModel.setTodoData(id) },
-                updateTodoIsDone = { id -> viewModel.updateTodoIsDone(id) },
-                deleteTodoItem = { id -> viewModel.deleteTodoData(id) })
+                handleAction = {viewModel.dispatch(it)},
+                isShownToast = todoUiState.isShownToast
+            )
         }
     }
 
@@ -138,12 +114,8 @@ class MainActivity : ComponentActivity() {
     fun AppTitleBar(
         todoData: TodoData,
         deleteDataSet: MutableSet<Int>,
-        setTodoData: (Int) -> Unit,
-        onTitleChanged: (String) -> Unit,
-        onDescriptionChanged: (String) -> Unit,
-        isShownToast: Boolean,
-        modifyTodoData: (Boolean, TodoData) -> Boolean,
-        deleteTodoItem: (Int) -> Unit
+        handleAction: (EditTodoAction) -> Unit,
+        isShownToast: Boolean
     ) {
         var showAddDialogState by rememberSaveable { mutableStateOf(false) }
         var showDeleteDialogState by rememberSaveable { mutableStateOf(false) }
@@ -172,20 +144,17 @@ class MainActivity : ComponentActivity() {
         if (showAddDialogState) {
             AddTodoDataDialog(
                 todoData = todoData,
+                handleAction = handleAction,
                 closeDialog = { showAddDialogState = false },
-                onTitleChanged = onTitleChanged,
-                onDescriptionChanged = onDescriptionChanged,
-                setTodoData = setTodoData,
-                isShownToast = isShownToast,
-                modifyTodoData = modifyTodoData
+                isShownToast = isShownToast
             )
         }
 
         if (showDeleteDialogState)
             DeleteDialog(
                 id = -1,
-                closeDialog = { showDeleteDialogState = false },
-                deleteTodoItem = deleteTodoItem
+                handleAction = handleAction,
+                closeDialog = { showDeleteDialogState = false }
             )
     }
 
@@ -196,13 +165,13 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun DeleteDialog(
         id: Int = -1,
-        deleteTodoItem: (Int) -> Unit,
+        handleAction: (EditTodoAction) -> Unit,
         closeDialog: () -> Unit
     ) {
         AlertDialog(onDismissRequest = { closeDialog() },
             confirmButton = {
                 TextButton(onClick = {
-                    deleteTodoItem(id)
+                    handleAction(EditTodoAction.DeleteTodoItem(id))
                     closeDialog()
                 }) {
                     Text(stringResource(id = R.string.confirm))
@@ -225,13 +194,8 @@ class MainActivity : ComponentActivity() {
     fun TodoItem(
         todoData: TodoData,
         selectedTodoData: TodoData,
-        onTitleChanged: (String) -> Unit,
-        onDescriptionChanged: (String) -> Unit,
-        isShownToast: Boolean,
-        modifyTodoData: (Boolean, TodoData) -> Boolean,
-        setTodoData: (Int) -> Unit,
-        updateTodoIsDone: (Int) -> Unit,
-        deleteTodoItem: (Int) -> Unit
+        handleAction: (EditTodoAction) -> Unit,
+        isShownToast: Boolean
     ) {
         var showAddTodoDialog by rememberSaveable { mutableStateOf(false) }
         var showDeleteDialogState by rememberSaveable { mutableStateOf(false) }
@@ -240,19 +204,16 @@ class MainActivity : ComponentActivity() {
             AddTodoDataDialog(
                 todoData = todoData,
                 selectedTodoData = selectedTodoData,
-                setTodoData = { setTodoData(it) },
+                handleAction = handleAction,
                 closeDialog = { showAddTodoDialog = false },
                 id = todoData.id,
-                onTitleChanged = onTitleChanged,
-                onDescriptionChanged = onDescriptionChanged,
-                isShownToast = isShownToast,
-                modifyTodoData = modifyTodoData
+                isShownToast = isShownToast
             )
         }
 
         if (showDeleteDialogState) {
             DeleteDialog(
-                deleteTodoItem = deleteTodoItem,
+                handleAction = handleAction,
                 id = todoData.id,
                 closeDialog = { showDeleteDialogState = false })
         }
@@ -280,7 +241,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 Checkbox(
                     checked = isDone, onCheckedChange = {
-                        updateTodoIsDone(todoData.id)
+                        handleAction(EditTodoAction.UpdateTodoIsDone(todoData.id))
                     }, modifier = Modifier.align(Alignment.CenterVertically)
                 )
                 Column(
@@ -340,13 +301,10 @@ class MainActivity : ComponentActivity() {
     fun AddTodoDataDialog(
         todoData: TodoData,
         closeDialog: () -> Unit,
+        handleAction: (EditTodoAction) -> Unit = {},
         selectedTodoData: TodoData = TodoData(),
         id: Int = -1,
-        onTitleChanged: (String) -> Unit,
-        onDescriptionChanged: (String) -> Unit,
-        setTodoData: (Int) -> Unit,
-        isShownToast: Boolean,
-        modifyTodoData: (Boolean, TodoData) -> Boolean
+        isShownToast: Boolean
     ) {
         val updateFlag = id != -1
         val updatedTodoData = if (updateFlag) selectedTodoData else todoData
@@ -355,7 +313,7 @@ class MainActivity : ComponentActivity() {
         if (isShownToast) ShowToastMsg(message = stringResource(id = R.string.todoData_title))
 
         LaunchedEffect(Unit) {
-            setTodoData(id)
+            handleAction(EditTodoAction.SetTodoData(id))
             /*launch {
                 focusRequest.requestFocus()
             }*/
@@ -366,9 +324,15 @@ class MainActivity : ComponentActivity() {
             title = { Text(text = stringResource(id = R.string.add_todoData_title)) },
             confirmButton = {
                 TextButton(onClick = {
-                    onTitleChanged(updatedTodoData.title)
-                    onDescriptionChanged(updatedTodoData.description)
-                    if (modifyTodoData(updateFlag, updatedTodoData)) closeDialog.invoke()
+                    handleAction(EditTodoAction.ChangeTodoTitle(updatedTodoData.title))
+                    handleAction(EditTodoAction.ChangeTodoDescription(updatedTodoData.description))
+
+                    if(updatedTodoData.title.isEmpty()) {
+                        handleAction(EditTodoAction.ShowToastMsg)
+                    } else {
+                        handleAction(EditTodoAction.ModifyTodoData(updateFlag))
+                        closeDialog()
+                    }
                 }) {
                     if (updateFlag) Text(text = stringResource(id = R.string.modify)) else Text(
                         text = stringResource(
@@ -382,13 +346,13 @@ class MainActivity : ComponentActivity() {
                     OutlinedTextField(
                         value = updatedTodoData.title,
                         /*modifier = Modifier.focusRequester(focusRequest),*/
-                        onValueChange = { onTitleChanged(it) },
+                        onValueChange = { handleAction(EditTodoAction.ChangeTodoTitle(it)) },
                         placeholder = { Text(stringResource(id = R.string.todoData_title)) },
                         maxLines = 5
                     )
                     OutlinedTextField(
                         value = updatedTodoData.description,
-                        onValueChange = { onDescriptionChanged(it) },
+                        onValueChange = { handleAction(EditTodoAction.ChangeTodoDescription(it))},
                         placeholder = { Text(stringResource(id = R.string.todoData_description)) },
                         modifier = Modifier
                             .height(300.dp)
@@ -420,27 +384,17 @@ class MainActivity : ComponentActivity() {
     fun TodoList(
         modifier: Modifier = Modifier,
         todoList: List<TodoData> = listOf(),
-        onTitleChanged: (String) -> Unit,
-        onDescriptionChanged: (String) -> Unit,
+        handleAction: (EditTodoAction) -> Unit,
         isShownToast: Boolean,
         selectedTodoItem: TodoData,
-        modifyTodoData: (Boolean, TodoData) -> Boolean,
-        setTodoData: (Int) -> Unit,
-        updateTodoIsDone: (Int) -> Unit,
-        deleteTodoItem: (Int) -> Unit
     ) {
         LazyColumn(modifier = modifier) {
             items(items = todoList) { todoData ->
                 TodoItem(
                     todoData = todoData,
-                    onTitleChanged = onTitleChanged,
-                    onDescriptionChanged = onDescriptionChanged,
+                    handleAction = handleAction,
                     selectedTodoData = selectedTodoItem,
-                    isShownToast = isShownToast,
-                    modifyTodoData = modifyTodoData,
-                    setTodoData = setTodoData,
-                    updateTodoIsDone = updateTodoIsDone,
-                    deleteTodoItem = deleteTodoItem
+                    isShownToast = isShownToast
                 )
             }
         }
@@ -452,19 +406,14 @@ class MainActivity : ComponentActivity() {
     fun MainScreenPreview() {
         TodoListTheme {
             Surface(
-                modifier = Modifier.fillMaxSize()/*, color = MaterialTheme.colorScheme.background*/
+                modifier = Modifier.fillMaxSize()
             ) {
                 TodoList(
                     todoList = listOf(TodoData(title = "title", description = "description")),
                     selectedTodoItem = TodoData(),
-                    setTodoData = {},
                     modifier = Modifier,
-                    deleteTodoItem = {},
-                    modifyTodoData = {_,_ -> false},
                     isShownToast = false,
-                    onDescriptionChanged = {},
-                    onTitleChanged = {},
-                    updateTodoIsDone = {}
+                    handleAction = {}
                 )
             }
         }

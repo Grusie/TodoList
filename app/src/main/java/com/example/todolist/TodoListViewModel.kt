@@ -6,7 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.todolist.model.TodoDao
 import com.example.todolist.model.TodoData
 import com.example.todolist.model.TodoDatabase
-import com.example.todolist.model.TodoUiState
+import com.example.todolist.uiState.EditTodoAction
+import com.example.todolist.uiState.TodoUiState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,10 +29,43 @@ class TodoListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+
+    fun dispatch(action: EditTodoAction) {
+        when (action) {
+            is EditTodoAction.ChangeTodoTitle -> {
+                updateTodoTitle(action.title)
+            }
+
+            is EditTodoAction.ChangeTodoDescription -> {
+                updateTodoDescription(action.description)
+            }
+
+            is EditTodoAction.UpdateTodoIsDone -> {
+                updateTodoIsDone(action.id)
+            }
+
+            is EditTodoAction.ShowToastMsg -> {
+                showToast()
+            }
+
+            is EditTodoAction.SetTodoData -> {
+                setTodoData(action.id)
+            }
+
+            is EditTodoAction.ModifyTodoData -> {
+                modifyTodoData(action.updateFlag)
+            }
+
+            is EditTodoAction.DeleteTodoItem -> {
+                deleteTodoData(action.id)
+            }
+        }
+    }
+
     /**
      * 투두데이터 세팅
      **/
-    fun setTodoData(id: Int) {
+    private fun setTodoData(id: Int) {
         if (id == -1) {
             _todoUiState.update {
                 it.copy(
@@ -52,15 +86,9 @@ class TodoListViewModel(application: Application) : AndroidViewModel(application
     /**
      * 투두데이터 삽입/수정
      **/
-    fun modifyTodoData(updateFlag: Boolean = false, todoData: TodoData): Boolean {
-        return if (todoData.title.isEmpty()) {
-            showToast()
-            false
-        } else {
-            viewModelScope.launch {
-                if (updateFlag) updateTodoData() else insertTodoData()
-            }
-            true
+    private fun modifyTodoData(updateFlag: Boolean = false) {
+        viewModelScope.launch {
+            if (updateFlag) updateTodoData() else insertTodoData()
         }
     }
 
@@ -74,7 +102,7 @@ class TodoListViewModel(application: Application) : AndroidViewModel(application
     /**
      * 투두 데이터 타이틀 수정
      **/
-    fun updateTodoTitle(title: String) {
+    private fun updateTodoTitle(title: String) {
         _todoUiState.update { currentTodoUiState ->
             currentTodoUiState.copy(
                 todoData = currentTodoUiState.todoData.copy(title = title)
@@ -85,7 +113,7 @@ class TodoListViewModel(application: Application) : AndroidViewModel(application
     /**
      * 투두 데이터 내용 수정
      **/
-    fun updateTodoDescription(description: String) {
+    private fun updateTodoDescription(description: String) {
         _todoUiState.update { currentTodoUiState ->
             currentTodoUiState.copy(
                 todoData = currentTodoUiState.todoData.copy(description = description)
@@ -96,7 +124,7 @@ class TodoListViewModel(application: Application) : AndroidViewModel(application
     /**
      * 투두 데이터 체크 상태 업데이트
      **/
-    fun updateTodoIsDone(id: Int) {
+    private fun updateTodoIsDone(id: Int) {
         viewModelScope.launch {
             _todoUiState.update { currentTodoUiState ->
                 val todoData = getTodoData(id)
@@ -180,7 +208,7 @@ class TodoListViewModel(application: Application) : AndroidViewModel(application
     /**
      * 투두 데이터 삭제
      **/
-    fun deleteTodoData(id: Int = -1) {
+    private fun deleteTodoData(id: Int = -1) {
         viewModelScope.launch {
             if (id != -1) {
                 todoDao.delete(getTodoData(id))

@@ -1,4 +1,6 @@
-package com.example.todolist.model
+package com.example.todolist.uiState
+
+import com.example.todolist.model.TodoData
 
 /**
  * 투두 데이터 UI STATE
