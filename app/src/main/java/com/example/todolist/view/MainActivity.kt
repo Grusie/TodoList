@@ -454,7 +454,18 @@ class MainActivity : ComponentActivity() {
             Surface(
                 modifier = Modifier.fillMaxSize()/*, color = MaterialTheme.colorScheme.background*/
             ) {
-                //TodoList(viewModel = viewModel, todoList = listOf(TodoData()))
+                TodoList(
+                    todoList = listOf(TodoData(title = "title", description = "description")),
+                    selectedTodoItem = TodoData(),
+                    setTodoData = {},
+                    modifier = Modifier,
+                    deleteTodoItem = {},
+                    modifyTodoData = {_,_ -> false},
+                    isShownToast = false,
+                    onDescriptionChanged = {},
+                    onTitleChanged = {},
+                    updateTodoIsDone = {}
+                )
             }
         }
     }
