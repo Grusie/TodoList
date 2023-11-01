@@ -1,7 +1,6 @@
 package com.example.todolist.view
 
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.res.Configuration.UI_MODE_NIGHT_YES
 import android.os.Bundle
 import android.widget.Toast
@@ -23,7 +22,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -38,18 +36,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -58,12 +51,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.todolist.R
 import com.example.todolist.TodoListViewModel
 import com.example.todolist.model.TodoData
 import com.example.todolist.ui.theme.TodoListTheme
-import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
 
@@ -83,24 +76,75 @@ class MainActivity : ComponentActivity() {
     }
 
 
-    @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
+    /**
+     * 메인페이지 스크린
+     **/
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun MainScreen(viewModel: TodoListViewModel = viewModel()) {
-        val todoList by viewModel.todoList.collectAsState()
+        val todoUiState by viewModel.todoUiState.collectAsStateWithLifecycle()
+
         Scaffold(
-            //topBar = { AppTitleBar(viewModel = viewModel) }
-        ) {
-            Column {
-                AppTitleBar(viewModel)
-                TodoList(viewModel = viewModel, todoList = todoList)
+            topBar = {
+                AppTitleBar(
+                    todoData = todoUiState.todoData,
+                    deleteDataSet = todoUiState.deleteDataSet,
+                    setTodoData = { id -> viewModel.setTodoData(id) },
+                    onTitleChanged = { title -> viewModel.updateTodoTitle(title) },
+                    onDescriptionChanged = { description ->
+                        viewModel.updateTodoDescription(
+                            description
+                        )
+                    },
+                    isShownToast = todoUiState.isShownToast,
+                    modifyTodoData = { updateFlag, todoData ->
+                        viewModel.modifyTodoData(
+                            updateFlag,
+                            todoData
+                        )
+                    },
+                    deleteTodoItem = { id -> viewModel.deleteTodoData(id) })
             }
+        ) { paddingValues ->
+            TodoList(
+                modifier = Modifier.padding(paddingValues),
+                todoList = todoUiState.todoList,
+                selectedTodoItem = todoUiState.todoData,
+                onTitleChanged = { title -> viewModel.updateTodoTitle(title) },
+                onDescriptionChanged = { description ->
+                    viewModel.updateTodoDescription(
+                        description
+                    )
+                },
+                isShownToast = todoUiState.isShownToast,
+                modifyTodoData = { updateFlag, todoData ->
+                    viewModel.modifyTodoData(
+                        updateFlag,
+                        todoData
+                    )
+                },
+                setTodoData = { id -> viewModel.setTodoData(id) },
+                updateTodoIsDone = { id -> viewModel.updateTodoIsDone(id) },
+                deleteTodoItem = { id -> viewModel.deleteTodoData(id) })
         }
     }
 
+
+    /**
+     * 앱 타이틀 바
+     **/
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
-    fun AppTitleBar(viewModel: TodoListViewModel = viewModel()) {
+    fun AppTitleBar(
+        todoData: TodoData,
+        deleteDataSet: MutableSet<Int>,
+        setTodoData: (Int) -> Unit,
+        onTitleChanged: (String) -> Unit,
+        onDescriptionChanged: (String) -> Unit,
+        isShownToast: Boolean,
+        modifyTodoData: (Boolean, TodoData) -> Boolean,
+        deleteTodoItem: (Int) -> Unit
+    ) {
         var showAddDialogState by rememberSaveable { mutableStateOf(false) }
         var showDeleteDialogState by rememberSaveable { mutableStateOf(false) }
 
@@ -117,8 +161,7 @@ class MainActivity : ComponentActivity() {
                 )
             }
             IconButton(onClick = {
-                if (viewModel.deleteItemsSet.size > 0)
-                    showDeleteDialogState = true
+                if (deleteDataSet.isNotEmpty()) showDeleteDialogState = true
             }) {
                 Icon(
                     imageVector = Icons.Filled.Delete, contentDescription = "deleteTodoList"
@@ -126,34 +169,47 @@ class MainActivity : ComponentActivity() {
             }
         })
 
-        ShowTodoDialog(
-            viewModel = viewModel,
-            showDialog = showAddDialogState,
-            onCloseDialog = { showAddDialogState = false }
-        )
+        if (showAddDialogState) {
+            AddTodoDataDialog(
+                todoData = todoData,
+                closeDialog = { showAddDialogState = false },
+                onTitleChanged = onTitleChanged,
+                onDescriptionChanged = onDescriptionChanged,
+                setTodoData = setTodoData,
+                isShownToast = isShownToast,
+                modifyTodoData = modifyTodoData
+            )
+        }
 
         if (showDeleteDialogState)
             DeleteDialog(
-                viewModel = viewModel,
                 id = -1,
-                onCloseDialog = { showDeleteDialogState = false }
+                closeDialog = { showDeleteDialogState = false },
+                deleteTodoItem = deleteTodoItem
             )
     }
 
 
+    /**
+     * 투두데이터 삭제 다이얼로그
+     **/
     @Composable
-    fun DeleteDialog(viewModel: TodoListViewModel, id: Int = -1, onCloseDialog: () -> Unit) {
-        AlertDialog(onDismissRequest = { onCloseDialog.invoke() },
+    fun DeleteDialog(
+        id: Int = -1,
+        deleteTodoItem: (Int) -> Unit,
+        closeDialog: () -> Unit
+    ) {
+        AlertDialog(onDismissRequest = { closeDialog() },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.deleteTodoItem(id)
-                    onCloseDialog.invoke()
+                    deleteTodoItem(id)
+                    closeDialog()
                 }) {
                     Text(stringResource(id = R.string.confirm))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { onCloseDialog.invoke() }) {
+                TextButton(onClick = { closeDialog() }) {
                     Text(stringResource(id = R.string.cancel))
                 }
             },
@@ -161,157 +217,158 @@ class MainActivity : ComponentActivity() {
             text = { Text(text = stringResource(id = R.string.delete_todoData_detail)) })
     }
 
-    @Composable
-    fun TodoItem(viewModel: TodoListViewModel, item: TodoData) {
-        var showDialog by rememberSaveable { mutableStateOf(false) }
 
-        ShowTodoDialog(
-            viewModel = viewModel,
-            showDialog = showDialog,
-            onCloseDialog = { showDialog = false },
-            id = item.id
-        )
+    /**
+     * 투두 데이터 아이템
+     **/
+    @Composable
+    fun TodoItem(
+        todoData: TodoData,
+        selectedTodoData: TodoData,
+        onTitleChanged: (String) -> Unit,
+        onDescriptionChanged: (String) -> Unit,
+        isShownToast: Boolean,
+        modifyTodoData: (Boolean, TodoData) -> Boolean,
+        setTodoData: (Int) -> Unit,
+        updateTodoIsDone: (Int) -> Unit,
+        deleteTodoItem: (Int) -> Unit
+    ) {
+        var showAddTodoDialog by rememberSaveable { mutableStateOf(false) }
+        var showDeleteDialogState by rememberSaveable { mutableStateOf(false) }
+
+        if (showAddTodoDialog) {
+            AddTodoDataDialog(
+                todoData = todoData,
+                selectedTodoData = selectedTodoData,
+                setTodoData = { setTodoData(it) },
+                closeDialog = { showAddTodoDialog = false },
+                id = todoData.id,
+                onTitleChanged = onTitleChanged,
+                onDescriptionChanged = onDescriptionChanged,
+                isShownToast = isShownToast,
+                modifyTodoData = modifyTodoData
+            )
+        }
+
+        if (showDeleteDialogState) {
+            DeleteDialog(
+                deleteTodoItem = deleteTodoItem,
+                id = todoData.id,
+                closeDialog = { showDeleteDialogState = false })
+        }
+
         Card(
             modifier = Modifier
                 .padding(vertical = 4.dp, horizontal = 8.dp)
                 .clickable(enabled = true, onClick = {
-                    showDialog = true
+                    showAddTodoDialog = true
                 })
-        ) { TodoContent(viewModel, item) }
-    }
-
-    @Composable
-    fun ShowTodoDialog(
-        viewModel: TodoListViewModel, showDialog: Boolean, onCloseDialog: () -> Unit, id: Int = -1
-    ) {
-        if (showDialog) {
-            viewModel.setTodoData(id)
-            AddTodoDataDialog(
-                viewModel = viewModel, closeDialog = onCloseDialog, id = id
-            )
-        }
-    }
-
-
-    @Composable
-    fun TodoContent(viewModel: TodoListViewModel, item: TodoData) {
-        var editable by rememberSaveable { mutableStateOf(false) }
-        var isDone by rememberSaveable { mutableStateOf(false) }
-        isDone = item.isDone
-        Row(
-            modifier = Modifier
-                .animateContentSize(
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessLow
-                    )
-                )
-                .padding(vertical = 8.dp)
         ) {
-            Checkbox(
-                checked = isDone, onCheckedChange = {
-                    viewModel.updateTodoIsDone(item.id)
-                }, modifier = Modifier.align(Alignment.CenterVertically)
-            )
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(8.dp)
-            ) {
-                Text(
-                    text = item.title,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = item.description,
-                    fontSize = 12.sp,
-                    textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
 
-            Column {
-                var showAddDialogState by rememberSaveable { mutableStateOf(false) }
-                var showDeleteDialogState by rememberSaveable { mutableStateOf(false) }
-                IconButton(onClick = { editable = !editable }) {
-                    Icon(
-                        imageVector = Icons.Filled.MoreVert,
-                        contentDescription = stringResource(id = R.string.more)
+            var editable by rememberSaveable { mutableStateOf(false) }
+            var isDone by rememberSaveable { mutableStateOf(false) }
+            isDone = todoData.isDone
+            Row(
+                modifier = Modifier
+                    .animateContentSize(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessLow
+                        )
+                    )
+                    .padding(vertical = 8.dp)
+            ) {
+                Checkbox(
+                    checked = isDone, onCheckedChange = {
+                        updateTodoIsDone(todoData.id)
+                    }, modifier = Modifier.align(Alignment.CenterVertically)
+                )
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(8.dp)
+                ) {
+                    Text(
+                        text = todoData.title,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = todoData.description,
+                        fontSize = 12.sp,
+                        textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                DropdownMenu(
-                    expanded = editable,
-                    onDismissRequest = { editable = false },
-                ) {
-                    DropdownMenuItem(text = { Text(stringResource(id = R.string.modify)) },
-                        onClick = {
-                            showAddDialogState = true
-                            editable = false
-                        })
-                    DropdownMenuItem(text = { Text(stringResource(id = R.string.delete)) },
-                        onClick = {
-                            showDeleteDialogState = true
-                            editable = false
-                        })
+
+                Column {
+                    IconButton(onClick = { editable = !editable }) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = stringResource(id = R.string.more)
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = editable,
+                        onDismissRequest = { editable = false },
+                    ) {
+                        DropdownMenuItem(text = { Text(stringResource(id = R.string.modify)) },
+                            onClick = {
+                                showAddTodoDialog = true
+                                editable = false
+                            })
+                        DropdownMenuItem(text = { Text(stringResource(id = R.string.delete)) },
+                            onClick = {
+                                showDeleteDialogState = true
+                                editable = false
+                            })
+                    }
                 }
-
-                ShowTodoDialog(
-                    viewModel = viewModel,
-                    showDialog = showAddDialogState,
-                    onCloseDialog = { showAddDialogState = false },
-                    id = item.id
-                )
-
-                if (showDeleteDialogState) DeleteDialog(
-                    viewModel = viewModel,
-                    id = item.id,
-                    onCloseDialog = { showDeleteDialogState = false })
             }
         }
     }
 
-
+    /**
+     * 투두데이터 추가 다이얼로그
+     **/
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun AddTodoDataDialog(
-        viewModel: TodoListViewModel, closeDialog: () -> Unit, id: Int = -1
+        todoData: TodoData,
+        closeDialog: () -> Unit,
+        selectedTodoData: TodoData = TodoData(),
+        id: Int = -1,
+        onTitleChanged: (String) -> Unit,
+        onDescriptionChanged: (String) -> Unit,
+        setTodoData: (Int) -> Unit,
+        isShownToast: Boolean,
+        modifyTodoData: (Boolean, TodoData) -> Boolean
     ) {
         val updateFlag = id != -1
-        val activity = (LocalContext.current as Activity)
-        val todoData = viewModel.todoData.collectAsState().value
-        var emptyTitleState by rememberSaveable { mutableStateOf(false) }
-        var isToastVisibleState by rememberSaveable { mutableStateOf(false) }
-        val focusRequest = remember {FocusRequester()}
+        val updatedTodoData = if (updateFlag) selectedTodoData else todoData
+        //val focusRequest = remember { FocusRequester() }
 
-        if (emptyTitleState && !isToastVisibleState) {
-            isToastVisibleState = true
-            Toast.makeText(
-                activity,
-                stringResource(id = R.string.todoData_title),
-                Toast.LENGTH_SHORT
-            ).show()
+        if (isShownToast) ShowToastMsg(message = stringResource(id = R.string.todoData_title))
+
+        LaunchedEffect(Unit) {
+            setTodoData(id)
+            /*launch {
+                focusRequest.requestFocus()
+            }*/
         }
 
-        LaunchedEffect(emptyTitleState) {
-            delay(2000)
-            isToastVisibleState = false
-        }
         AlertDialog(
-            onDismissRequest = { /*closeDialog.invoke()*/ },
+            onDismissRequest = { closeDialog() },
             title = { Text(text = stringResource(id = R.string.add_todoData_title)) },
             confirmButton = {
                 TextButton(onClick = {
-                    if (viewModel.todoData.value.title.isEmpty()) {
-                        emptyTitleState = true
-                    } else {
-                        viewModel.modifyTodoData(updateFlag, todoData)
-                        closeDialog.invoke()
-                    }
+                    onTitleChanged(updatedTodoData.title)
+                    onDescriptionChanged(updatedTodoData.description)
+                    if (modifyTodoData(updateFlag, updatedTodoData)) closeDialog.invoke()
                 }) {
                     if (updateFlag) Text(text = stringResource(id = R.string.modify)) else Text(
                         text = stringResource(
@@ -323,15 +380,15 @@ class MainActivity : ComponentActivity() {
             text = {
                 Column {
                     OutlinedTextField(
-                        value = todoData.title,
-                        modifier = Modifier.focusRequester(focusRequest),
-                        onValueChange = { viewModel.updateTodoTitle(it) },
+                        value = updatedTodoData.title,
+                        /*modifier = Modifier.focusRequester(focusRequest),*/
+                        onValueChange = { onTitleChanged(it) },
                         placeholder = { Text(stringResource(id = R.string.todoData_title)) },
                         maxLines = 5
                     )
                     OutlinedTextField(
-                        value = todoData.description,
-                        onValueChange = { viewModel.updateTodoDescription(it) },
+                        value = updatedTodoData.description,
+                        onValueChange = { onDescriptionChanged(it) },
                         placeholder = { Text(stringResource(id = R.string.todoData_description)) },
                         modifier = Modifier
                             .height(300.dp)
@@ -341,35 +398,63 @@ class MainActivity : ComponentActivity() {
                 }
             },
             dismissButton = {
-                TextButton(onClick = { closeDialog.invoke() }) {
+                TextButton(onClick = { closeDialog() }) {
                     Text(text = stringResource(id = R.string.cancel))
                 }
             })
-        focusRequest.requestFocus()
     }
 
+    /**
+     * 토스트 메세지
+     **/
     @Composable
-    fun TodoList(viewModel: TodoListViewModel = viewModel(), todoList: List<TodoData> = listOf()) {
-        LazyColumn() {
+    fun ShowToastMsg(message: String) {
+        Toast.makeText(LocalContext.current, message, Toast.LENGTH_SHORT).show()
+    }
+
+
+    /**
+     * 투두 리스트
+     **/
+    @Composable
+    fun TodoList(
+        modifier: Modifier = Modifier,
+        todoList: List<TodoData> = listOf(),
+        onTitleChanged: (String) -> Unit,
+        onDescriptionChanged: (String) -> Unit,
+        isShownToast: Boolean,
+        selectedTodoItem: TodoData,
+        modifyTodoData: (Boolean, TodoData) -> Boolean,
+        setTodoData: (Int) -> Unit,
+        updateTodoIsDone: (Int) -> Unit,
+        deleteTodoItem: (Int) -> Unit
+    ) {
+        LazyColumn(modifier = modifier) {
             items(items = todoList) { todoData ->
-                TodoItem(viewModel = viewModel, item = todoData)
+                TodoItem(
+                    todoData = todoData,
+                    onTitleChanged = onTitleChanged,
+                    onDescriptionChanged = onDescriptionChanged,
+                    selectedTodoData = selectedTodoItem,
+                    isShownToast = isShownToast,
+                    modifyTodoData = modifyTodoData,
+                    setTodoData = setTodoData,
+                    updateTodoIsDone = updateTodoIsDone,
+                    deleteTodoItem = deleteTodoItem
+                )
             }
         }
     }
 
     @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
-    @OptIn(ExperimentalMaterial3Api::class)
     @Preview(showBackground = true, widthDp = 320, uiMode = UI_MODE_NIGHT_YES)
     @Composable
     fun MainScreenPreview() {
         TodoListTheme {
-            Scaffold(
-                topBar = { AppTitleBar() },
+            Surface(
+                modifier = Modifier.fillMaxSize()/*, color = MaterialTheme.colorScheme.background*/
             ) {
-                Column {
-                    AppTitleBar()
-                    //TodoList()
-                }
+                //TodoList(viewModel = viewModel, todoList = listOf(TodoData()))
             }
         }
     }

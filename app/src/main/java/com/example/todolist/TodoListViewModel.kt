@@ -1,128 +1,202 @@
 package com.example.todolist
 
 import android.app.Application
-import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.todolist.model.TodoDao
 import com.example.todolist.model.TodoData
 import com.example.todolist.model.TodoDatabase
+import com.example.todolist.model.TodoUiState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class TodoListViewModel(application: Application) : AndroidViewModel(application) {
-    private var todoDb: TodoDatabase = TodoDatabase.getInstance(application)
-    private var todoDao: TodoDao = todoDb.todoDao()
-    private var _todoList = MutableStateFlow<List<TodoData>>(emptyList())
-    private var _todoData = MutableStateFlow(TodoData())
+    private val _todoUiState = MutableStateFlow(TodoUiState())
+    private val todoDb: TodoDatabase = TodoDatabase.getInstance(application)
+    private val todoDao: TodoDao = todoDb.todoDao()
 
-    val deleteItemsSet: MutableSet<Int> = mutableSetOf()
-    val todoData: StateFlow<TodoData> = _todoData.asStateFlow()
-    val todoList: StateFlow<List<TodoData>> = _todoList.asStateFlow()
+    val todoUiState: StateFlow<TodoUiState> = _todoUiState
 
     init {
         viewModelScope.launch {
-            updateTodoList()
+            if (isActive) updateTodoList()
         }
     }
 
+    /**
+     * 투두데이터 세팅
+     **/
     fun setTodoData(id: Int) {
         if (id == -1) {
-            _todoData.value = TodoData()
+            _todoUiState.update {
+                it.copy(
+                    todoData = TodoData()
+                )
+            }
         } else {
             viewModelScope.launch {
-                _todoData.value = getTodoItem(id)
+                _todoUiState.update {
+                    it.copy(
+                        todoData = getTodoData(id)
+                    )
+                }
             }
         }
     }
 
-
-    fun modifyTodoData(updateFlag: Boolean = false, todoData: TodoData) {
-        viewModelScope.launch {
-            if (updateFlag) updateTodoData() else insertTodoData()
+    /**
+     * 투두데이터 삽입/수정
+     **/
+    fun modifyTodoData(updateFlag: Boolean = false, todoData: TodoData): Boolean {
+        return if (todoData.title.isEmpty()) {
+            showToast()
+            false
+        } else {
+            viewModelScope.launch {
+                if (updateFlag) updateTodoData() else insertTodoData()
+            }
+            true
         }
     }
 
+    /**
+     * 투두 데이터 삽입
+     **/
     private suspend fun insertTodoData() {
-        todoDao.insert(_todoData.value)
-        updateTodoList()
+        todoDao.insert(_todoUiState.value.todoData)
     }
 
+    /**
+     * 투두 데이터 타이틀 수정
+     **/
     fun updateTodoTitle(title: String) {
-        _todoData.update { currentTodoData ->
-            currentTodoData.copy(
-                title = title
+        _todoUiState.update { currentTodoUiState ->
+            currentTodoUiState.copy(
+                todoData = currentTodoUiState.todoData.copy(title = title)
             )
         }
-        Log.d("confirm updateTodoTitle : ", "$title, ${_todoData.value}")
     }
 
+    /**
+     * 투두 데이터 내용 수정
+     **/
     fun updateTodoDescription(description: String) {
-        _todoData.update { currentTodoData ->
-            currentTodoData.copy(
-                description = description
+        _todoUiState.update { currentTodoUiState ->
+            currentTodoUiState.copy(
+                todoData = currentTodoUiState.todoData.copy(description = description)
             )
         }
-        Log.d("confirm updateTodoTitle : ", "$description, ${_todoData.value}")
     }
 
+    /**
+     * 투두 데이터 체크 상태 업데이트
+     **/
     fun updateTodoIsDone(id: Int) {
         viewModelScope.launch {
-            _todoData.value = getTodoItem(id)
+            _todoUiState.update { currentTodoUiState ->
+                val todoData = getTodoData(id)
+                val updatedTodoData = todoData.copy(isDone = !todoData.isDone)
+                if (updatedTodoData.isDone) currentTodoUiState.deleteDataSet.add(id) else currentTodoUiState.deleteDataSet.remove(
+                    id
+                )
 
-            _todoData.update { currentTodoData ->
-                currentTodoData.copy(
-                    isDone = !currentTodoData.isDone
+                currentTodoUiState.copy(
+                    todoData = updatedTodoData
                 )
             }
 
             updateTodoData()
+        }
+    }
 
-            if (_todoData.value.isDone) deleteItemsSet.add(id)
-            else deleteItemsSet.remove(id)
+    /**
+     * 토스트 메세지 관리
+     **/
+    private fun showToast() {
+        _todoUiState.update { currentTodoUiState ->
+            currentTodoUiState.copy(
+                isShownToast = true
+            )
+        }
+        clearShowToast()
+    }
+
+    private fun clearShowToast() {
+        viewModelScope.launch {
+            delay(2000)
+            _todoUiState.update { currentTodoUiState ->
+                currentTodoUiState.copy(
+                    isShownToast = false
+                )
+            }
         }
     }
 
 
+    /**
+     * 투두 리스트 업데이트
+     **/
     private suspend fun updateTodoList() {
-        _todoList.value = todoDao.getAllTodoList().first()
-        _todoList.value.forEach {
-            if (it.isDone)
-                deleteItemsSet.add(it.id)
+        todoDao.getAllTodoList().collect { todoList ->
+            val updatedDeleteDatasSet = mutableSetOf<Int>()
+            todoList.forEach {
+                if (it.isDone) {
+                    updatedDeleteDatasSet.add(it.id)
+                }
+            }
+            _todoUiState.update { currentTodoUiState ->
+                currentTodoUiState.copy(
+                    todoList = todoList,
+                    deleteDataSet = updatedDeleteDatasSet
+                )
+            }
         }
     }
 
+    /**
+     * 투두 데이터 업데이트
+     **/
     private suspend fun updateTodoData() {
-        todoDao.update(_todoData.value)
-        updateTodoList()
+        todoDao.update(_todoUiState.value.todoData)
+        _todoUiState.update { currentTodoUiState ->
+            val updatedTodoList = currentTodoUiState.todoList.toMutableList()
+            val index = updatedTodoList.indexOfFirst { it.id == _todoUiState.value.todoData.id }
+            if (index != -1) {
+                updatedTodoList[index] = _todoUiState.value.todoData
+            }
+            currentTodoUiState.copy(
+                todoList = updatedTodoList
+            )
+        }
+        //updateTodoList()
     }
 
-    fun deleteTodoItem(id: Int = -1) {
+
+    /**
+     * 투두 데이터 삭제
+     **/
+    fun deleteTodoData(id: Int = -1) {
         viewModelScope.launch {
             if (id != -1) {
-                todoDao.delete(getTodoItem(id))
-                if (deleteItemsSet.contains(id))
-                    deleteItemsSet.remove(id)
+                todoDao.delete(getTodoData(id))
             } else {
-                deleteItemsSet.forEach {
-                    todoDao.delete(getTodoItem(it))
+                _todoUiState.value.deleteDataSet.forEach { itemId ->
+                    todoDao.delete(getTodoData(itemId))
                 }
-                deleteItemsSet.clear()
             }
-            updateTodoList()
         }
     }
 
-    private suspend fun getTodoItem(id: Int): TodoData {
+    private suspend fun getTodoData(id: Int): TodoData {
         return if (id == -1) {
             TodoData()
         } else {
-            todoDao.getTodoItem(id).first()
+            todoDao.getTodoData(id).first()
         }
     }
 }
