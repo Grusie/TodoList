@@ -1,7 +1,6 @@
 package com.example.todolist.view
 
 import android.annotation.SuppressLint
-import android.content.res.Configuration.UI_MODE_NIGHT_YES
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -10,8 +9,10 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -39,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -56,8 +58,16 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.todolist.R
 import com.example.todolist.TodoListViewModel
 import com.example.todolist.model.TodoData
+import com.example.todolist.timeToString
 import com.example.todolist.ui.theme.TodoListTheme
 import com.example.todolist.uiState.EditTodoAction
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import me.onebone.toolbar.CollapsingToolbarScaffold
+import me.onebone.toolbar.ExperimentalToolbarApi
+import me.onebone.toolbar.ScrollStrategy
+import me.onebone.toolbar.rememberCollapsingToolbarScaffoldState
+import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
 
@@ -76,319 +86,387 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-
     /**
      * 메인페이지 스크린
      **/
-    @OptIn(ExperimentalMaterial3Api::class)
+    @OptIn(ExperimentalToolbarApi::class)
     @Composable
     fun MainScreen(viewModel: TodoListViewModel = viewModel()) {
         val todoUiState by viewModel.todoUiState.collectAsStateWithLifecycle()
-
-        Scaffold(
+        val state = rememberCollapsingToolbarScaffoldState()
+        val scope = rememberCoroutineScope()
+        /*Scaffold(
             topBar = {
                 AppTitleBar(
                     todoData = todoUiState.todoData,
                     deleteDataSet = todoUiState.deleteDataSet,
-                    handleAction = {viewModel.dispatch(it)},
+                    handleAction = { viewModel.dispatch(it) },
                     isShownToast = todoUiState.isShownToast
                 )
             }
         ) { paddingValues ->
+            CalendarView(handleAction = { viewModel.dispatch(it) })
             TodoList(
                 modifier = Modifier.padding(paddingValues),
                 todoList = todoUiState.todoList,
                 selectedTodoItem = todoUiState.todoData,
-                handleAction = {viewModel.dispatch(it)},
+                handleAction = { viewModel.dispatch(it) },
                 isShownToast = todoUiState.isShownToast
             )
-        }
-    }
-
-
-    /**
-     * 앱 타이틀 바
-     **/
-    @OptIn(ExperimentalMaterial3Api::class)
-    @Composable
-    fun AppTitleBar(
-        todoData: TodoData,
-        deleteDataSet: MutableSet<Int>,
-        handleAction: (EditTodoAction) -> Unit,
-        isShownToast: Boolean
-    ) {
-        var showAddDialogState by rememberSaveable { mutableStateOf(false) }
-        var showDeleteDialogState by rememberSaveable { mutableStateOf(false) }
-
-        TopAppBar(title = {
-            Text(
-                text = stringResource(id = R.string.app_name)
-            )
-        }, actions = {
-            IconButton(onClick = {
-                showAddDialogState = true
-            }) {
-                Icon(
-                    imageVector = Icons.Filled.Add, contentDescription = "addTodoList"
-                )
-            }
-            IconButton(onClick = {
-                if (deleteDataSet.isNotEmpty()) showDeleteDialogState = true
-            }) {
-                Icon(
-                    imageVector = Icons.Filled.Delete, contentDescription = "deleteTodoList"
-                )
-            }
-        })
-
-        if (showAddDialogState) {
-            AddTodoDataDialog(
-                todoData = todoData,
-                handleAction = handleAction,
-                closeDialog = { showAddDialogState = false },
-                isShownToast = isShownToast
-            )
-        }
-
-        if (showDeleteDialogState)
-            DeleteDialog(
-                id = -1,
-                handleAction = handleAction,
-                closeDialog = { showDeleteDialogState = false }
-            )
-    }
-
-
-    /**
-     * 투두데이터 삭제 다이얼로그
-     **/
-    @Composable
-    fun DeleteDialog(
-        id: Int = -1,
-        handleAction: (EditTodoAction) -> Unit,
-        closeDialog: () -> Unit
-    ) {
-        AlertDialog(onDismissRequest = { closeDialog() },
-            confirmButton = {
-                TextButton(onClick = {
-                    handleAction(EditTodoAction.DeleteTodoItem(id))
-                    closeDialog()
-                }) {
-                    Text(stringResource(id = R.string.confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { closeDialog() }) {
-                    Text(stringResource(id = R.string.cancel))
-                }
-            },
-            title = { Text(text = stringResource(id = R.string.delete_todoData_title)) },
-            text = { Text(text = stringResource(id = R.string.delete_todoData_detail)) })
-    }
-
-
-    /**
-     * 투두 데이터 아이템
-     **/
-    @Composable
-    fun TodoItem(
-        todoData: TodoData,
-        selectedTodoData: TodoData,
-        handleAction: (EditTodoAction) -> Unit,
-        isShownToast: Boolean
-    ) {
-        var showAddTodoDialog by rememberSaveable { mutableStateOf(false) }
-        var showDeleteDialogState by rememberSaveable { mutableStateOf(false) }
-
-        if (showAddTodoDialog) {
-            AddTodoDataDialog(
-                todoData = todoData,
-                selectedTodoData = selectedTodoData,
-                handleAction = handleAction,
-                closeDialog = { showAddTodoDialog = false },
-                id = todoData.id,
-                isShownToast = isShownToast
-            )
-        }
-
-        if (showDeleteDialogState) {
-            DeleteDialog(
-                handleAction = handleAction,
-                id = todoData.id,
-                closeDialog = { showDeleteDialogState = false })
-        }
-
-        Card(
-            modifier = Modifier
-                .padding(vertical = 4.dp, horizontal = 8.dp)
-                .clickable(enabled = true, onClick = {
-                    showAddTodoDialog = true
-                })
-        ) {
-
-            var editable by rememberSaveable { mutableStateOf(false) }
-            var isDone by rememberSaveable { mutableStateOf(false) }
-            isDone = todoData.isDone
-            Row(
-                modifier = Modifier
-                    .animateContentSize(
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = Spring.StiffnessLow
-                        )
-                    )
-                    .padding(vertical = 8.dp)
-            ) {
-                Checkbox(
-                    checked = isDone, onCheckedChange = {
-                        handleAction(EditTodoAction.UpdateTodoIsDone(todoData.id))
-                    }, modifier = Modifier.align(Alignment.CenterVertically)
-                )
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(8.dp)
-                ) {
-                    Text(
-                        text = todoData.title,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = todoData.description,
-                        fontSize = 12.sp,
-                        textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Column {
-                    IconButton(onClick = { editable = !editable }) {
-                        Icon(
-                            imageVector = Icons.Filled.MoreVert,
-                            contentDescription = stringResource(id = R.string.more)
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = editable,
-                        onDismissRequest = { editable = false },
-                    ) {
-                        DropdownMenuItem(text = { Text(stringResource(id = R.string.modify)) },
-                            onClick = {
-                                showAddTodoDialog = true
-                                editable = false
-                            })
-                        DropdownMenuItem(text = { Text(stringResource(id = R.string.delete)) },
-                            onClick = {
-                                showDeleteDialogState = true
-                                editable = false
-                            })
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * 투두데이터 추가 다이얼로그
-     **/
-    @OptIn(ExperimentalMaterial3Api::class)
-    @Composable
-    fun AddTodoDataDialog(
-        todoData: TodoData,
-        closeDialog: () -> Unit,
-        handleAction: (EditTodoAction) -> Unit = {},
-        selectedTodoData: TodoData = TodoData(),
-        id: Int = -1,
-        isShownToast: Boolean
-    ) {
-        val updateFlag = id != -1
-        val updatedTodoData = if (updateFlag) selectedTodoData else todoData
-        //val focusRequest = remember { FocusRequester() }
-
-        if (isShownToast) ShowToastMsg(message = stringResource(id = R.string.todoData_title))
+        }*/
 
         LaunchedEffect(Unit) {
-            handleAction(EditTodoAction.SetTodoData(id))
-            /*launch {
-                focusRequest.requestFocus()
-            }*/
+            viewModel.dispatch(EditTodoAction.UpdateTodoList(LocalDate.now()))
+        }
+        val monthFlag = state.toolbarState.progress > 0
+
+        CollapsingToolbarScaffold(
+            modifier = Modifier,
+            state = state,
+            toolbar = {
+                Box(modifier = Modifier.height(70.dp)) {
+                    CalendarHeader(
+                        modifier = Modifier.fillMaxSize(),
+                        currentDate = todoUiState.currentDate,
+                        changeCurrentMonth = {
+                            viewModel.dispatch(it)
+                            if (monthFlag) {
+                                scope.launch {
+                                    delay(200)
+                                    state.toolbarState.expand(0)
+                                }
+                            }
+                        },
+                        formatPattern = if (monthFlag) "yyyy년 MM월" else "yyyy년 MM월 dd일",
+                        monthFlag = monthFlag
+                    )
+                }
+                CalendarView(
+                    modifier = Modifier
+                        .pin()
+                        .padding(top = 70.dp),
+                    currentDate = todoUiState.currentDate,
+                    handleAction = { viewModel.dispatch(it) }
+                )
+            },
+            scrollStrategy = ScrollStrategy.ExitUntilCollapsed
+        ) {
+            Column {
+
+                TodoList(
+                    modifier = Modifier.fillMaxHeight(),
+                    todoList = todoUiState.todoList,
+                    selectedTodoItem = todoUiState.todoData,
+                    handleAction = { viewModel.dispatch(it) },
+                    isShownToast = todoUiState.isShownToast
+                )
+            }
         }
 
-        AlertDialog(
-            onDismissRequest = { closeDialog() },
-            title = { Text(text = stringResource(id = R.string.add_todoData_title)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    handleAction(EditTodoAction.ChangeTodoTitle(updatedTodoData.title))
-                    handleAction(EditTodoAction.ChangeTodoDescription(updatedTodoData.description))
 
-                    if(updatedTodoData.title.isEmpty()) {
-                        handleAction(EditTodoAction.ShowToastMsg)
-                    } else {
-                        handleAction(EditTodoAction.ModifyTodoData(updateFlag))
-                        closeDialog()
-                    }
-                }) {
-                    if (updateFlag) Text(text = stringResource(id = R.string.modify)) else Text(
-                        text = stringResource(
-                            id = R.string.add
+        /*        Scaffold() {it ->
+                    Column(modifier = Modifier.padding(it)) {
+                        CalendarView(handleAction = { viewModel.dispatch(it) })
+                        TodoList(
+                            todoList = todoUiState.todoList,
+                            selectedTodoItem = todoUiState.todoData,
+                            handleAction = { viewModel.dispatch(it) },
+                            isShownToast = todoUiState.isShownToast
                         )
-                    )
-                }
-            },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = updatedTodoData.title,
-                        /*modifier = Modifier.focusRequester(focusRequest),*/
-                        onValueChange = { handleAction(EditTodoAction.ChangeTodoTitle(it)) },
-                        placeholder = { Text(stringResource(id = R.string.todoData_title)) },
-                        maxLines = 5
-                    )
-                    OutlinedTextField(
-                        value = updatedTodoData.description,
-                        onValueChange = { handleAction(EditTodoAction.ChangeTodoDescription(it))},
-                        placeholder = { Text(stringResource(id = R.string.todoData_description)) },
-                        modifier = Modifier
-                            .height(300.dp)
-                            .padding(vertical = 10.dp),
-                        maxLines = 20
-                    )
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { closeDialog() }) {
-                    Text(text = stringResource(id = R.string.cancel))
-                }
+                    }
+                }*/
+    }
+}
+
+
+/**
+ * 앱 타이틀 바
+ **/
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AppTitleBar(
+    todoData: TodoData,
+    deleteDataSet: MutableSet<Int>,
+    handleAction: (EditTodoAction) -> Unit,
+    isShownToast: Boolean
+) {
+    var showAddDialogState by rememberSaveable { mutableStateOf(false) }
+    var showDeleteDialogState by rememberSaveable { mutableStateOf(false) }
+
+    TopAppBar(title = {
+        Text(
+            text = stringResource(id = R.string.app_name)
+        )
+    }, actions = {
+        IconButton(onClick = {
+            showAddDialogState = true
+        }) {
+            Icon(
+                imageVector = Icons.Filled.Add, contentDescription = "addTodoList"
+            )
+        }
+        IconButton(onClick = {
+            if (deleteDataSet.isNotEmpty()) showDeleteDialogState = true
+        }) {
+            Icon(
+                imageVector = Icons.Filled.Delete, contentDescription = "deleteTodoList"
+            )
+        }
+    })
+
+    if (showAddDialogState) {
+        AddTodoDataDialog(
+            todoData = todoData,
+            handleAction = handleAction,
+            closeDialog = { showAddDialogState = false },
+            isShownToast = isShownToast
+        )
+    }
+
+    if (showDeleteDialogState)
+        DeleteDialog(
+            id = -1,
+            handleAction = handleAction,
+            closeDialog = { showDeleteDialogState = false }
+        )
+}
+
+
+/**
+ * 투두데이터 삭제 다이얼로그
+ **/
+@Composable
+fun DeleteDialog(
+    id: Int = -1,
+    handleAction: (EditTodoAction) -> Unit,
+    closeDialog: () -> Unit
+) {
+    AlertDialog(onDismissRequest = { closeDialog() },
+        confirmButton = {
+            TextButton(onClick = {
+                handleAction(EditTodoAction.DeleteTodoItem(id))
+                closeDialog()
+            }) {
+                Text(stringResource(id = R.string.confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { closeDialog() }) {
+                Text(stringResource(id = R.string.cancel))
+            }
+        },
+        title = { Text(text = stringResource(id = R.string.delete_todoData_title)) },
+        text = { Text(text = stringResource(id = R.string.delete_todoData_detail)) })
+}
+
+
+/**
+ * 투두 데이터 아이템
+ **/
+@Composable
+fun TodoItem(
+    todoData: TodoData,
+    selectedTodoData: TodoData,
+    handleAction: (EditTodoAction) -> Unit,
+    isShownToast: Boolean
+) {
+    var showAddTodoDialog by rememberSaveable { mutableStateOf(false) }
+    var showDeleteDialogState by rememberSaveable { mutableStateOf(false) }
+
+    if (showAddTodoDialog) {
+        AddTodoDataDialog(
+            todoData = todoData,
+            selectedTodoData = selectedTodoData,
+            handleAction = handleAction,
+            closeDialog = { showAddTodoDialog = false },
+            id = todoData.id,
+            isShownToast = isShownToast
+        )
+    }
+
+    if (showDeleteDialogState) {
+        DeleteDialog(
+            handleAction = handleAction,
+            id = todoData.id,
+            closeDialog = { showDeleteDialogState = false })
+    }
+
+    Card(
+        modifier = Modifier
+            .padding(vertical = 4.dp, horizontal = 8.dp)
+            .clickable(enabled = true, onClick = {
+                showAddTodoDialog = true
             })
-    }
-
-    /**
-     * 토스트 메세지
-     **/
-    @Composable
-    fun ShowToastMsg(message: String) {
-        Toast.makeText(LocalContext.current, message, Toast.LENGTH_SHORT).show()
-    }
-
-
-    /**
-     * 투두 리스트
-     **/
-    @Composable
-    fun TodoList(
-        modifier: Modifier = Modifier,
-        todoList: List<TodoData> = listOf(),
-        handleAction: (EditTodoAction) -> Unit,
-        isShownToast: Boolean,
-        selectedTodoItem: TodoData,
     ) {
-        LazyColumn(modifier = modifier) {
+
+        var editable by rememberSaveable { mutableStateOf(false) }
+        var isDone by rememberSaveable { mutableStateOf(false) }
+        isDone = todoData.isDone
+        Row(
+            modifier = Modifier
+                .animateContentSize(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessLow
+                    )
+                )
+                .padding(vertical = 8.dp)
+        ) {
+            Checkbox(
+                checked = isDone, onCheckedChange = {
+                    handleAction(EditTodoAction.UpdateTodoIsDone(todoData.id))
+                }, modifier = Modifier.align(Alignment.CenterVertically)
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(8.dp)
+            ) {
+                Text(
+                    text = todoData.todoTime.timeToString(),
+                    fontSize = 10.sp
+                )
+                Text(
+                    text = todoData.title,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = todoData.description,
+                    fontSize = 12.sp,
+                    textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Column {
+                IconButton(onClick = { editable = !editable }) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = stringResource(id = R.string.more)
+                    )
+                }
+                DropdownMenu(
+                    expanded = editable,
+                    onDismissRequest = { editable = false },
+                ) {
+                    DropdownMenuItem(text = { Text(stringResource(id = R.string.modify)) },
+                        onClick = {
+                            showAddTodoDialog = true
+                            editable = false
+                        })
+                    DropdownMenuItem(text = { Text(stringResource(id = R.string.delete)) },
+                        onClick = {
+                            showDeleteDialogState = true
+                            editable = false
+                        })
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 투두데이터 추가 다이얼로그
+ **/
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddTodoDataDialog(
+    todoData: TodoData,
+    closeDialog: () -> Unit,
+    handleAction: (EditTodoAction) -> Unit = {},
+    selectedTodoData: TodoData = TodoData(),
+    id: Int = -1,
+    isShownToast: Boolean
+) {
+    val updateFlag = id != -1
+    val updatedTodoData = if (updateFlag) selectedTodoData else todoData
+    //val focusRequest = remember { FocusRequester() }
+
+    if (isShownToast) ShowToastMsg(message = stringResource(id = R.string.todoData_title))
+
+    LaunchedEffect(Unit) {
+        handleAction(EditTodoAction.SetTodoData(id))
+        /*launch {
+            focusRequest.requestFocus()
+        }*/
+    }
+
+    AlertDialog(
+        onDismissRequest = { closeDialog() },
+        title = { Text(text = stringResource(id = R.string.add_todoData_title)) },
+        confirmButton = {
+            TextButton(onClick = {
+                handleAction(EditTodoAction.ChangeTodoTitle(updatedTodoData.title))
+                handleAction(EditTodoAction.ChangeTodoDescription(updatedTodoData.description))
+
+                if (updatedTodoData.title.isEmpty()) {
+                    handleAction(EditTodoAction.ShowToastMsg)
+                } else {
+                    handleAction(EditTodoAction.ModifyTodoData(updateFlag))
+                    closeDialog()
+                }
+            }) {
+                if (updateFlag) Text(text = stringResource(id = R.string.modify)) else Text(
+                    text = stringResource(
+                        id = R.string.add
+                    )
+                )
+            }
+        },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = updatedTodoData.title,
+                    /*modifier = Modifier.focusRequester(focusRequest),*/
+                    onValueChange = { handleAction(EditTodoAction.ChangeTodoTitle(it)) },
+                    placeholder = { Text(stringResource(id = R.string.todoData_title)) },
+                    maxLines = 5
+                )
+                OutlinedTextField(
+                    value = updatedTodoData.description,
+                    onValueChange = { handleAction(EditTodoAction.ChangeTodoDescription(it)) },
+                    placeholder = { Text(stringResource(id = R.string.todoData_description)) },
+                    modifier = Modifier
+                        .height(300.dp)
+                        .padding(vertical = 10.dp),
+                    maxLines = 20
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { closeDialog() }) {
+                Text(text = stringResource(id = R.string.cancel))
+            }
+        })
+}
+
+/**
+ * 토스트 메세지
+ **/
+@Composable
+fun ShowToastMsg(message: String) {
+    Toast.makeText(LocalContext.current, message, Toast.LENGTH_SHORT).show()
+}
+
+
+/**
+ * 투두 리스트
+ **/
+@Composable
+fun TodoList(
+    modifier: Modifier = Modifier,
+    todoList: List<TodoData> = listOf(),
+    handleAction: (EditTodoAction) -> Unit,
+    isShownToast: Boolean,
+    selectedTodoItem: TodoData,
+) {
+    Surface(modifier = modifier) {
+        LazyColumn() {
             items(items = todoList) { todoData ->
                 TodoItem(
                     todoData = todoData,
@@ -399,19 +477,41 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
 
-    @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
-    @Preview(showBackground = true, widthDp = 320, uiMode = UI_MODE_NIGHT_YES)
-    @Composable
-    fun MainScreenPreview() {
-        TodoListTheme {
-            Surface(
-                modifier = Modifier.fillMaxSize()
-            ) {
+@OptIn(ExperimentalMaterial3Api::class)
+@SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
+@Preview(showBackground = true, widthDp = 320)
+@Composable
+fun MainScreenPreview() {
+    TodoListTheme {
+        Surface(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Scaffold(
+                topBar = {
+                    CalendarView(currentDate = LocalDate.now(), handleAction = {})
+                }
+                /*topBar = {
+                    CalendarHeader(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp)
+                    )
+                }*/
+                /*topBar = {
+                    AppTitleBar(
+                        todoData = TodoData(),
+                        deleteDataSet = mutableSetOf(),
+                        handleAction = {},
+                        isShownToast = false
+                    )
+                }*/
+            ) { paddingValues ->
                 TodoList(
                     todoList = listOf(TodoData(title = "title", description = "description")),
                     selectedTodoItem = TodoData(),
-                    modifier = Modifier,
+                    modifier = Modifier.padding(paddingValues),
                     isShownToast = false,
                     handleAction = {}
                 )
