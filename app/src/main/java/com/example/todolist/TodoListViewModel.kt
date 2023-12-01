@@ -7,10 +7,13 @@ import com.example.todolist.model.TodoDao
 import com.example.todolist.model.TodoData
 import com.example.todolist.model.TodoDatabase
 import com.example.todolist.uiState.EditTodoAction
+import com.example.todolist.uiState.TodoListUiState
 import com.example.todolist.uiState.TodoUiState
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -19,10 +22,18 @@ import java.time.LocalDateTime
 
 class TodoListViewModel(application: Application) : AndroidViewModel(application) {
     private val _todoUiState = MutableStateFlow(TodoUiState())
+    private val _todoListUiState = MutableStateFlow(TodoListUiState())
     private val todoDb: TodoDatabase = TodoDatabase.getInstance(application)
     private val todoDao: TodoDao = todoDb.todoDao()
 
+    val todoListUiState: StateFlow<TodoListUiState> = _todoListUiState
     val todoUiState: StateFlow<TodoUiState> = _todoUiState
+
+    private var currentJob: Job? = null
+
+    init {
+        updateTodoList(_todoListUiState.value.currentDate)
+    }
 
     fun dispatch(action: EditTodoAction) {
         when (action) {
@@ -69,15 +80,15 @@ class TodoListViewModel(application: Application) : AndroidViewModel(application
      **/
     private fun setTodoData(id: Int) {
         if (id == -1) {
-            _todoUiState.update {
-                it.copy(
-                    todoData = TodoData()
+            _todoUiState.update { currentTodoUiState ->
+                currentTodoUiState.copy(
+                    todoData = TodoData(todoDate = _todoListUiState.value.currentDate)
                 )
             }
         } else {
             viewModelScope.launch {
-                _todoUiState.update {
-                    it.copy(
+                _todoUiState.update { currentTodoUiState ->
+                    currentTodoUiState.copy(
                         todoData = getTodoData(id)
                     )
                 }
@@ -89,21 +100,22 @@ class TodoListViewModel(application: Application) : AndroidViewModel(application
      * 투두데이터 삽입/수정
      **/
     private fun modifyTodoData(updateFlag: Boolean = false) {
-        _todoUiState.update { currentTodoUiState ->
-            currentTodoUiState.copy(
-                todoData = currentTodoUiState.todoData.copy(writtenTime = LocalDateTime.now())
-            )
-        }
+        /*        _todoUiState.update { currentTodoUiState ->
+                    currentTodoUiState.copy(
+                        todoData = currentTodoUiState.todoData.copy(writtenTime = LocalDateTime.now())
+                    )
+                }*/
+        val updatedTodoData = _todoUiState.value.todoData.copy(writtenTime = LocalDateTime.now())
         viewModelScope.launch {
-            if (updateFlag) updateTodoData() else insertTodoData()
+            if (updateFlag) updateTodoData() else insertTodoData(updatedTodoData)
         }
     }
 
     /**
      * 투두 데이터 삽입
      **/
-    private suspend fun insertTodoData() {
-        todoDao.insert(_todoUiState.value.todoData)
+    private suspend fun insertTodoData(todoData: TodoData) {
+        todoDao.insert(todoData)
     }
 
     /**
@@ -115,6 +127,10 @@ class TodoListViewModel(application: Application) : AndroidViewModel(application
                 todoData = currentTodoUiState.todoData.copy(title = title)
             )
         }
+
+        /*        _todoUiState2.update {
+                    TodoUiState2.Success(title)
+                }*/
     }
 
     /**
@@ -136,7 +152,7 @@ class TodoListViewModel(application: Application) : AndroidViewModel(application
             _todoUiState.update { currentTodoUiState ->
                 val todoData = getTodoData(id)
                 val updatedTodoData = todoData.copy(isDone = !todoData.isDone)
-                if (updatedTodoData.isDone) currentTodoUiState.deleteDataSet.add(id) else currentTodoUiState.deleteDataSet.remove(
+                if (updatedTodoData.isDone) _todoListUiState.value.deleteDataSet.add(id) else _todoListUiState.value.deleteDataSet.remove(
                     id
                 )
 
@@ -177,23 +193,26 @@ class TodoListViewModel(application: Application) : AndroidViewModel(application
      * 투두 리스트 업데이트
      **/
     private fun updateTodoList(todoDate: LocalDate) {
-        _todoUiState.update { currentTodoUiState ->
-            currentTodoUiState.copy(
-                currentDate = todoDate
-            )
-        }
+        /*        _todoUiState.update { currentTodoUiState ->
+                    currentTodoUiState.copy(
+                        currentDate = todoDate
+                    )
+                }*/
 
-        viewModelScope.launch {
-            todoDao.getTodoListWithDate(todoDate.dateToString()).collect { todoList ->
+
+        currentJob?.cancel()
+        currentJob = viewModelScope.launch {
+            todoDao.getTodoListWithDate(todoDate.dateToString()).collectLatest { todoList ->
                 val updatedDeleteDatasSet = mutableSetOf<Int>()
                 todoList.forEach {
                     if (it.isDone) {
                         updatedDeleteDatasSet.add(it.id)
                     }
                 }
-                _todoUiState.update { currentTodoUiState ->
+                _todoListUiState.update { currentTodoUiState ->
                     currentTodoUiState.copy(
                         todoList = todoList,
+                        currentDate = todoDate,
                         deleteDataSet = updatedDeleteDatasSet
                     )
                 }
@@ -216,27 +235,26 @@ class TodoListViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun updateCurrentDate(currentDate: LocalDate) {
-        _todoUiState.update { currentTodoUiState ->
-            currentTodoUiState.copy(currentDate = currentDate)
-        }
+        updateTodoList(currentDate)
     }
 
 
     /**
      * 투두 데이터 업데이트
      **/
-    private suspend fun updateTodoData() {
-        todoDao.update(_todoUiState.value.todoData)
-        _todoUiState.update { currentTodoUiState ->
-            val updatedTodoList = currentTodoUiState.todoList.toMutableList()
-            val index = updatedTodoList.indexOfFirst { it.id == _todoUiState.value.todoData.id }
-            if (index != -1) {
-                updatedTodoList[index] = _todoUiState.value.todoData
-            }
-            currentTodoUiState.copy(
-                todoList = updatedTodoList
-            )
-        }
+    private suspend fun updateTodoData(todoUiState: TodoUiState = _todoUiState.value) {
+        todoDao.update(todoUiState.todoData)
+
+        /*        _todoUiState.update { currentTodoUiState ->
+                    val updatedTodoList = currentTodoUiState.todoList.toMutableList()
+                    val index = updatedTodoList.indexOfFirst { it.id == _todoUiState.value.todoData.id }
+                    if (index != -1) {
+                        updatedTodoList[index] = _todoUiState.value.todoData
+                    }
+                    currentTodoUiState.copy(
+                        todoList = updatedTodoList
+                    )
+                }*/
         //updateTodoList()
     }
 
@@ -245,15 +263,25 @@ class TodoListViewModel(application: Application) : AndroidViewModel(application
      * 투두 데이터 삭제
      **/
     private fun deleteTodoData(id: Int = -1) {
-        viewModelScope.launch {
-            if (id != -1) {
+        if (id != -1) {
+            viewModelScope.launch {
                 todoDao.delete(getTodoData(id))
-            } else {
-                _todoUiState.value.deleteDataSet.forEach { itemId ->
+            }
+            _todoListUiState.value.deleteDataSet.remove(id)
+        } else {
+            viewModelScope.launch {
+                _todoListUiState.value.deleteDataSet.forEach { itemId ->
                     todoDao.delete(getTodoData(itemId))
                 }
             }
+            //_todoUiState.value.deleteDataSet.clear()
         }
+
+        /*_todoUiState.update { currentTodoUiState ->
+            currentTodoUiState.copy(
+                deleteDataSet = currentTodoUiState.deleteDataSet
+            )
+        }*/
     }
 
     private suspend fun getTodoData(id: Int): TodoData {

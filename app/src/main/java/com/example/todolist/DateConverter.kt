@@ -1,15 +1,21 @@
 package com.example.todolist
 
 import androidx.room.TypeConverter
+import com.example.todolist.CustomFormatter.dateFormat
+import com.example.todolist.CustomFormatter.dateTimeFormatter
+import com.example.todolist.CustomFormatter.timeFormat
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-val dateFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy년 MM월 dd일", Locale.KOREAN)
-val timeFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-val dateTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss")
+object CustomFormatter {
+    val dateFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy년 MM월 dd일", Locale.KOREAN)
+    val monthFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy년 MM월", Locale.KOREAN)
+    val timeFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+    val dateTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss")
+}
 
 class DateConverter {
     @TypeConverter

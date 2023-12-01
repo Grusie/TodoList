@@ -20,11 +20,16 @@ import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,6 +40,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.todolist.ui.theme.C5586EB
+import com.example.todolist.ui.theme.CF15F5F
 import com.example.todolist.ui.theme.TodoListTheme
 import com.example.todolist.uiState.EditTodoAction
 import java.time.DayOfWeek
@@ -55,7 +62,11 @@ fun Calendar(
         if (firstDayOfCurrentMonth.dayOfWeek.value == 7) 0 else firstDayOfCurrentMonth.dayOfWeek.value - 1
     val yearMonth = YearMonth.of(currentDate.year, currentDate.month)
 
-    var selectedDate = currentDate
+    var selectedDate by remember { mutableStateOf(currentDate) }
+
+    LaunchedEffect(currentDate) {
+        selectedDate = currentDate
+    }
 
     Column(modifier = modifier) {
         Column(Modifier.padding(8.dp)) {
@@ -68,14 +79,15 @@ fun Calendar(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 reorderedDays.forEach { dayOfWeek ->
+                    val textName = dayOfWeek.getDisplayName(
+                        java.time.format.TextStyle.NARROW,
+                        Locale.KOREAN
+                    )
                     Text(
-                        text = dayOfWeek.getDisplayName(
-                            java.time.format.TextStyle.NARROW,
-                            Locale.KOREAN
-                        ),
+                        text = textName,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .weight(1f)
+                        modifier = Modifier.weight(1f),
+                        color = if (dayOfWeek == DayOfWeek.SUNDAY) CF15F5F else if (dayOfWeek == DayOfWeek.SATURDAY) C5586EB else LocalContentColor.current
                     )
                 }
             }
@@ -110,6 +122,7 @@ fun Calendar(
                             val date = yearMonth.atDay(dayOfMonth)
                             val isSelected = date == selectedDate
 
+
                             CalendarDay(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(10.dp))
@@ -117,8 +130,8 @@ fun Calendar(
                                 date = date,
                                 isSelected = isSelected,
                                 onDateClick = {
-                                    selectedDate = date
-                                    handleAction(EditTodoAction.UpdateTodoList(selectedDate))
+                                    handleAction(EditTodoAction.UpdateCurrentDate(date))
+                                    handleAction(EditTodoAction.UpdateTodoList(date))
                                 }
                             )
                             dayOfMonth++
@@ -205,10 +218,13 @@ fun CalendarDay(
             .background(backgroundColor)
             .clickable { onDateClick(date) }
     ) {
+        val defaultColor =
+            if (date.dayOfWeek == DayOfWeek.SUNDAY) CF15F5F else if (date.dayOfWeek == DayOfWeek.SATURDAY) C5586EB else Color.Black
+
         Text(
             text = date.dayOfMonth.toString(),
             modifier = Modifier.align(Alignment.Center),
-            color = if (isSelected) Color.White else Color.Black
+            color = if (isSelected) Color.White else defaultColor
         )
     }
 }
@@ -228,7 +244,7 @@ fun CalendarHeader(
     modifier: Modifier = Modifier,
     currentDate: LocalDate,
     changeCurrentMonth: (EditTodoAction) -> Unit,
-    formatPattern: String,
+    formatPattern: DateTimeFormatter,
     monthFlag: Boolean
 ) {
     Row(
@@ -238,11 +254,16 @@ fun CalendarHeader(
     ) {
         IconButton(
             onClick = {
+                val resultDate =
+                    if (monthFlag) currentDate.minusMonths(1) else currentDate.minusDays(1)
                 changeCurrentMonth(
                     EditTodoAction.UpdateCurrentDate(
-                        if (monthFlag) currentDate.minusMonths(
-                            1
-                        ) else currentDate.minusDays(1)
+                        resultDate
+                    )
+                )
+                changeCurrentMonth(
+                    EditTodoAction.UpdateTodoList(
+                        resultDate
                     )
                 )
             },
@@ -252,7 +273,7 @@ fun CalendarHeader(
             Icon(imageVector = Icons.Filled.KeyboardArrowLeft, contentDescription = "lastDay")
         }
         Text(
-            text = currentDate.format(DateTimeFormatter.ofPattern(formatPattern)),
+            text = currentDate.format(formatPattern),
             modifier = Modifier,
             style = TextStyle(fontWeight = FontWeight.Bold),
             fontSize = 20.sp,
@@ -260,10 +281,15 @@ fun CalendarHeader(
         )
         IconButton(
             onClick = {
+                val resultDate =
+                    if (monthFlag) currentDate.plusMonths(1) else currentDate.plusDays(1)
                 changeCurrentMonth(
                     EditTodoAction.UpdateCurrentDate(
-                        if (monthFlag) currentDate.plusMonths(1) else currentDate.plusDays(1)
+                        resultDate
                     )
+                )
+                changeCurrentMonth(
+                    EditTodoAction.UpdateTodoList(resultDate)
                 )
             },
             modifier = Modifier

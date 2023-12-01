@@ -1,6 +1,5 @@
 package com.example.todolist.view
 
-import android.annotation.SuppressLint
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -8,12 +7,15 @@ import androidx.activity.compose.setContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -46,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -55,8 +58,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.todolist.CustomFormatter
 import com.example.todolist.R
 import com.example.todolist.TodoListViewModel
+import com.example.todolist.dateToString
 import com.example.todolist.model.TodoData
 import com.example.todolist.timeToString
 import com.example.todolist.ui.theme.TodoListTheme
@@ -93,8 +98,11 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun MainScreen(viewModel: TodoListViewModel = viewModel()) {
         val todoUiState by viewModel.todoUiState.collectAsStateWithLifecycle()
+        val todoListUiState by viewModel.todoListUiState.collectAsStateWithLifecycle()
         val state = rememberCollapsingToolbarScaffoldState()
         val scope = rememberCoroutineScope()
+        var deleteFlag by rememberSaveable { mutableStateOf(false) }
+
         /*Scaffold(
             topBar = {
                 AppTitleBar(
@@ -115,10 +123,7 @@ class MainActivity : ComponentActivity() {
             )
         }*/
 
-        LaunchedEffect(Unit) {
-            viewModel.dispatch(EditTodoAction.UpdateTodoList(LocalDate.now()))
-        }
-        val monthFlag = state.toolbarState.progress > 0
+        val monthFlag = state.toolbarState.progress > 0.1
 
         CollapsingToolbarScaffold(
             modifier = Modifier,
@@ -127,7 +132,7 @@ class MainActivity : ComponentActivity() {
                 Box(modifier = Modifier.height(70.dp)) {
                     CalendarHeader(
                         modifier = Modifier.fillMaxSize(),
-                        currentDate = todoUiState.currentDate,
+                        currentDate = todoListUiState.currentDate,
                         changeCurrentMonth = {
                             viewModel.dispatch(it)
                             if (monthFlag) {
@@ -137,7 +142,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         },
-                        formatPattern = if (monthFlag) "yyyy년 MM월" else "yyyy년 MM월 dd일",
+                        formatPattern = if (monthFlag) CustomFormatter.monthFormat else CustomFormatter.dateFormat,
                         monthFlag = monthFlag
                     )
                 }
@@ -145,36 +150,43 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier
                         .pin()
                         .padding(top = 70.dp),
-                    currentDate = todoUiState.currentDate,
-                    handleAction = { viewModel.dispatch(it) }
+                    currentDate = todoListUiState.currentDate,
+                    handleAction = {
+                        viewModel.dispatch(it)
+                        scope.launch {
+                            delay(200)
+                            state.toolbarState.expand(0)
+                        }
+                    }
                 )
             },
             scrollStrategy = ScrollStrategy.ExitUntilCollapsed
         ) {
             Column {
+                AppTitleBar(
+                    todoData = todoUiState.todoData,
+                    deleteDataSet = todoListUiState.deleteDataSet,
+                    handleAction = {
+                        viewModel.dispatch(it)
+                        if (it is EditTodoAction.DeleteTodoItem) deleteFlag = !deleteFlag
+                    },
+                    isShownToast = todoUiState.isShownToast,
+                    currentDate = todoListUiState.currentDate
+                )
 
                 TodoList(
                     modifier = Modifier.fillMaxHeight(),
-                    todoList = todoUiState.todoList,
+                    todoList = todoListUiState.todoList,
                     selectedTodoItem = todoUiState.todoData,
-                    handleAction = { viewModel.dispatch(it) },
-                    isShownToast = todoUiState.isShownToast
+                    handleAction = {
+                        viewModel.dispatch(it)
+                        if (it is EditTodoAction.DeleteTodoItem) deleteFlag = !deleteFlag
+                    },
+                    isShownToast = todoUiState.isShownToast,
+                    currentDate = todoListUiState.currentDate
                 )
             }
         }
-
-
-        /*        Scaffold() {it ->
-                    Column(modifier = Modifier.padding(it)) {
-                        CalendarView(handleAction = { viewModel.dispatch(it) })
-                        TodoList(
-                            todoList = todoUiState.todoList,
-                            selectedTodoItem = todoUiState.todoData,
-                            handleAction = { viewModel.dispatch(it) },
-                            isShownToast = todoUiState.isShownToast
-                        )
-                    }
-                }*/
     }
 }
 
@@ -188,14 +200,16 @@ fun AppTitleBar(
     todoData: TodoData,
     deleteDataSet: MutableSet<Int>,
     handleAction: (EditTodoAction) -> Unit,
-    isShownToast: Boolean
+    isShownToast: Boolean,
+    currentDate: LocalDate = LocalDate.now()
 ) {
     var showAddDialogState by rememberSaveable { mutableStateOf(false) }
     var showDeleteDialogState by rememberSaveable { mutableStateOf(false) }
 
     TopAppBar(title = {
         Text(
-            text = stringResource(id = R.string.app_name)
+            text = currentDate.dateToString(),
+            fontSize = 20.sp
         )
     }, actions = {
         IconButton(onClick = {
@@ -216,10 +230,11 @@ fun AppTitleBar(
 
     if (showAddDialogState) {
         AddTodoDataDialog(
-            todoData = todoData,
             handleAction = handleAction,
+            selectedTodoData = todoData,
             closeDialog = { showAddDialogState = false },
-            isShownToast = isShownToast
+            isShownToast = isShownToast,
+            currentDate = currentDate
         )
     }
 
@@ -268,19 +283,20 @@ fun TodoItem(
     todoData: TodoData,
     selectedTodoData: TodoData,
     handleAction: (EditTodoAction) -> Unit,
-    isShownToast: Boolean
+    isShownToast: Boolean,
+    currentDate: LocalDate
 ) {
     var showAddTodoDialog by rememberSaveable { mutableStateOf(false) }
     var showDeleteDialogState by rememberSaveable { mutableStateOf(false) }
 
     if (showAddTodoDialog) {
         AddTodoDataDialog(
-            todoData = todoData,
             selectedTodoData = selectedTodoData,
             handleAction = handleAction,
             closeDialog = { showAddTodoDialog = false },
             id = todoData.id,
-            isShownToast = isShownToast
+            isShownToast = isShownToast,
+            currentDate = currentDate
         )
     }
 
@@ -376,15 +392,15 @@ fun TodoItem(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTodoDataDialog(
-    todoData: TodoData,
     closeDialog: () -> Unit,
     handleAction: (EditTodoAction) -> Unit = {},
     selectedTodoData: TodoData = TodoData(),
     id: Int = -1,
-    isShownToast: Boolean
+    isShownToast: Boolean,
+    currentDate: LocalDate
 ) {
     val updateFlag = id != -1
-    val updatedTodoData = if (updateFlag) selectedTodoData else todoData
+    val updatedTodoData = if (updateFlag) selectedTodoData else selectedTodoData
     //val focusRequest = remember { FocusRequester() }
 
     if (isShownToast) ShowToastMsg(message = stringResource(id = R.string.todoData_title))
@@ -464,23 +480,42 @@ fun TodoList(
     handleAction: (EditTodoAction) -> Unit,
     isShownToast: Boolean,
     selectedTodoItem: TodoData,
+    currentDate: LocalDate = LocalDate.now()
 ) {
     Surface(modifier = modifier) {
         LazyColumn() {
-            items(items = todoList) { todoData ->
-                TodoItem(
-                    todoData = todoData,
-                    handleAction = handleAction,
-                    selectedTodoData = selectedTodoItem,
-                    isShownToast = isShownToast
-                )
+            if (todoList.isEmpty()) {
+                item {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 80.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_empty_todo),
+                            contentDescription = "empty todoList"
+                        )
+                        Text(text = stringResource(id = R.string.empty_todoList))
+                    }
+                }
+            } else {
+                items(items = todoList) { todoData ->
+                    TodoItem(
+                        todoData = todoData,
+                        handleAction = handleAction,
+                        selectedTodoData = selectedTodoItem,
+                        isShownToast = isShownToast,
+                        currentDate = currentDate
+                    )
+                }
             }
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Preview(showBackground = true, widthDp = 320)
 @Composable
 fun MainScreenPreview() {
